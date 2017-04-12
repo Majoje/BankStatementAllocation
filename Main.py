@@ -11,6 +11,9 @@ from openpyxl.utils import get_column_letter
 from openpyxl import Workbook
 #from datetime import date, timedelta
 import sqlite3
+import pandas as pd
+import csv
+import numpy as np
 import matplotlib.pyplot as plt
 import getpass
 import ConfigParser
@@ -73,9 +76,10 @@ class MainWindow(QtGui.QMainWindow):
         currentDateTime = time.time()
 
     def checkinifile(self):
+        config = ConfigParser.ConfigParser()
         #GetMonitorsize()
-        projiniFileName = 'projini.txt'
-        projiniFileNameOld = 'projini_old.txt'
+        projiniFileName = 'proj.ini'
+        projiniFileNameOld = 'projbak.ini'
         now = time.time()
         userName = getpass.getuser()
         currentDirectory = os.getcwd()
@@ -86,7 +90,7 @@ class MainWindow(QtGui.QMainWindow):
         #listofNetifaces = netifaces.interfaces()
         #countofNetifaces = ('{}'.format(len(listofNetifaces)))
 
-        fileobj = open(projiniFileName, 'w')
+        #fileobj = open(projiniFileName, 'w')
 
         if not (path.isfile(projiniFileName)):
 
@@ -100,25 +104,28 @@ class MainWindow(QtGui.QMainWindow):
             #    msize = "%d,%d,%d" % (m, mg.width, mg.height)
             #    monitors.append(msize)
             #fileobj.write("{}".format(monitors) + '\n')
-            Config.add_section('MainConfig')
-            Config.set('MainConfig', 'initialDateTime', currentDateTime)
+            config.add_section('MainConfig')
+            config.set('MainConfig', 'initialDateTime', currentDateTime)
             #fileobj.write("{}".format('0') + '\n')
             #fileobj.write("{}".format('0') + '\n')
             #fileobj.write("{}".format(currentDateTime) + '\n')
+            #with open(path, projiniFileName) as config_file:
+            with open(projiniFileName, "wb") as config_file:
+                config.write(config_file)
 
-
-            fileobj.close()
+            #fileobj.close()
         else:
             #if (path.isfile(fullFilePathNameOld)):
             #    os.remove(projiniFileNameOld)
             #else:
             #    pass
-            Config.read(projiniFileName)
-            generalConfig = (Config.sections()[0])
-            countOfBankAccs = (len(Config.sections())-1)
-            lastTime = self.ConfigSectionMap('MainConfig')['initialDateTime']
-            print (lastTime)
-            fileobj.close()
+            config.read(projiniFileName)
+            #generalConfig = config.get(config.sections('MainConfig'))
+            #countOfBankAccs = (len(config.get(config.sections())-1))
+            lastTime = config.get('MainConfig','initialDateTime')
+            print ("File Created: {}".format(lastTime))
+            print ("TimeDelta: {}".format(now-lastTime))
+            #fileobj.close()
 
             #os.rename(projiniFileName, projiniFileNameOld)
             #fileObjOld = open(projiniFileNameOld, 'r')
@@ -171,6 +178,112 @@ class MainWindow(QtGui.QMainWindow):
                 dict1[option] = None
         return dict1
 
+    def connectPySQL(self):
+        connectDb = sqlite3.connect('S32.db')
+        connectDb.row_factory = sqlite3.Row
+        app.processEvents()
+        return connectDb
+
+    def createPySQL(self):
+        Qry_Create_tbl_BankStatementSettings = ('''Create Table BankSettings (RecordID int IDENTITY(1,1) PRIMARY KEY, BankName TEXT DEFAULT 0 NOT NULL, StatementSettingName TEXT DEFAULT 0 NOT NULL,StatementSettingLocation TEXT DEFAULT 0 NOT NULL)''')
+        queryCursor = self.connectPySQL()
+        queryCursor.execute(Qry_Create_tbl_BankStatementSettings)
+        queryCursor.commit()
+        queryCursor.close()
+
+        return
+
+    def populate_BankStatementSettings(self):
+        queryCursor = self.connectPySQL()
+
+        #Nedbank:
+        QryNedbank_StatementField_AccNr = ("INSERT INTO BankSettings (BankName, StatementSettingName, StatementSettingLocation) VALUES ('Nedbank', 'AccountNumberField', 'B2')")
+        queryCursor.execute(QryNedbank_StatementField_AccNr)
+        queryCursor.commit()
+
+        QryNedbank_StatementField_AccDesc = ("INSERT INTO BankSettings (BankName, StatementSettingName, StatementSettingLocation) VALUES ('Nedbank', 'AccountNumberField', 'B2')")
+        queryCursor.execute(QryNedbank_StatementField_AccDesc)
+        queryCursor.commit()
+
+        QryNedbank_StatementField_StartRow = ("INSERT INTO BankSettings (BankName, StatementSettingName, StatementSettingLocation) VALUES ('Nedbank', 'TransactionStartRow', 5)")
+        queryCursor.execute(QryNedbank_StatementField_StartRow)
+        queryCursor.commit()
+
+        QryNedbank_StatementField_Date = ("INSERT INTO BankSettings (BankName, StatementSettingName, StatementSettingLocation) VALUES ('Nedbank', 'TransactionDate', 'A')")
+        queryCursor.execute(QryNedbank_StatementField_Date)
+        queryCursor.commit()
+
+        QryNedbank_StatementField_Description = ("INSERT INTO BankSettings (BankName, StatementSettingName, StatementSettingLocation) VALUES ('Nedbank', 'TransactionDescription', 'B')")
+        queryCursor.execute(QryNedbank_StatementField_Description)
+        queryCursor.commit()
+
+        QryNedbank_StatementField_TransactionAmount = ("INSERT INTO BankSettings (BankName, StatementSettingName, StatementSettingLocation) VALUES ('Nedbank', 'TransactionAmount', 'C')")
+        queryCursor.execute(QryNedbank_StatementField_TransactionAmount)
+        queryCursor.commit()
+
+        QryNedbank_StatementField_TransactionAccountSaldo = ("INSERT INTO BankSettings (BankName, StatementSettingName, StatementSettingLocation) VALUES ('Nedbank', 'TransactionAccountSaldo, 'D')")
+        queryCursor.execute(QryNedbank_StatementField_TransactionAccountSaldo)
+        queryCursor.commit()
+
+        queryCursor.close()
+        return
+
+    def checkBankAccTable(self):
+        queryCursor = self.connectPySQL()
+        queryCursor.execute("""SELECT COUNT(*) FROM information_schema.tables""")
+
+    def createBankAccTable(self):
+        queryCursor = self.connectPySQL()
+        queryCursor.execute("""SELECT COUNT(*) FROM information_schema.tables""")
+
+    def gen_rows(stream, max_length=None):
+        rows = csv.reader(stream)
+        if max_length is None:
+            rows = list(rows)
+            max_length = max(len(row) for row in rows)
+        for row in rows:
+            yield row + [None] * (max_length - len(row))
+
+
+    def openCSV(self):
+
+
+        names = QtGui.QFileDialog.getOpenFileNames(self, 'Open Files... ', QtCore.QDir.currentPath(),
+                                                   'CSV (*.csv)')
+        for fname in names:
+            print ('Opening CSV file \nPlease wait... ')
+            with open(fname) as f:
+                #df = pd.read_csv(filename=(str(fname).split('/')[-1:][0]),header=None)
+                #acc_df = pd.DataFrame.from_records(list(self.gen_rows(f)))
+                acc_df = pd.read_csv(f,header=None)
+                print ('Data File opened... ')
+                Accnr = (acc_df.iloc[1, 1])
+                AccName = (acc_df.iloc[2, 1])
+                print ("Acc Nr: {}".format(Accnr))
+                print ("Acc Name: {}".format(AccName))
+                print ("len: {}".format(len(acc_df)))
+
+
+        #return dataframe
+
+    def getGlobalVariable(self, variable):
+        try:
+            connectDB = self.connectPySQL()
+            with connectDB:
+                queryCursor = connectDB.cursor()
+                Qry = ("SELECT VarValue, VariableDescription FROM GlobalVariables WHERE Variable = '{}'".format(
+                    variable))
+                queryCursor.execute(Qry)
+                Qry_result = queryCursor.fetchall()
+                queryCursor.close()
+                result = []
+                for x in Qry_result:
+                    result.append(x)
+                    # print(x)
+                return x
+        except:
+            pass
+
     def home(self):
         extractAction = QtGui.QAction(QtGui.QIcon('exit.png'), 'Quit', self)
         extractAction.triggered.connect(self.close_application)
@@ -178,7 +291,7 @@ class MainWindow(QtGui.QMainWindow):
         configAction = QtGui.QAction(QtGui.QIcon('configuration-1.png'), 'Config...', self)
 
         openAction = QtGui.QAction(QtGui.QIcon('folder_green_open.png'), 'Open...', self)
-        openAction.triggered.connect(self.openWorkbook)
+        openAction.triggered.connect(self.openCSV)
 
         self.toolBar = self.addToolBar("Extraction")
         self.toolBar.addAction(extractAction)
@@ -193,8 +306,19 @@ class MainWindow(QtGui.QMainWindow):
         else:
             pass
 
+    def get_fname(self):
+        # Fullfilename = QtGui.QFileDialog.getOpenFileName(self, 'Open Files...', QtCore.QDir.currentPath(), 'Excel Spreadsheet (*.xlsx)')
+        # Fullfilename = QtGui.QFileDialog.getOpenFileName(self, 'Select file').resolve()
+        filter = 'CSV (*.csv)' #'Excel Spreadsheet (*.xlsx)'  # filter = "TXT (*.txt);;PDF (*.pdf)"
+        file_name = QtGui.QFileDialog()
+        file_name.setFileMode(QFileDialog.ExistingFile)
+        file_location = self.QtCore.QDir.currentPath()  # file_location = "C\\Desktop"
+        file_openMsg = "Open file..."
+        Fullfilename = file_name.getOpenFileNamesAndFilter(self, file_openMsg, QtCore.QDir.currentPath(), filter)
+        return Fullfilename
+
     def get_fnames(self):
-        filter = 'Excel Spreadsheet (*.xlsx)' # filter = "TXT (*.txt);;PDF (*.pdf)"
+        filter = 'CSV (*.csv)' # filter = "TXT (*.txt);;PDF (*.pdf)"
         file_name = QtGui.QFileDialog()
         file_name.setFileMode(QFileDialog.ExistingFiles)
         file_openMsg = "Open files..."
@@ -208,7 +332,7 @@ class MainWindow(QtGui.QMainWindow):
         wb = Workbook()
 
         names = QtGui.QFileDialog.getOpenFileNames(self, 'Open Files... ', QtCore.QDir.currentPath(),
-                                                   'Excel Spreadsheet (*.xlsx)')
+                                                   'CSV (*.csv)')
         for fname in names:
             print ('Opening Excel Data file \nPlease wait... ')
             excel_document = load_workbook(filename=(str(fname).split('/')[-1:][0]))
@@ -901,7 +1025,7 @@ class MainWindow(QtGui.QMainWindow):
         print("Done")
         print("\nPopulating Table Dates:")
         for tablename in tables:
-            print("Table: '{}'".format(tablename), end='')
+            #print("Table: '{}'".format(tablename), end='')
             self.populate_PySQL_tabledates(tablename)
         queryCursor.close()
         print("... Done")
@@ -938,6 +1062,7 @@ class MainWindow(QtGui.QMainWindow):
         # self.pB_CreateSQLStructure = QtGui.QPushButton(Form)
         # self.pB_CreateSQLStructure.setObjectName(_fromUtf8("pB_CreateSQLStructure"))
 
+        '''
         self.pB_CreatePySQLStructure = QtGui.QPushButton(Form)
         self.pB_CreatePySQLStructure.setObjectName(_fromUtf8("pB_CreatePySQLStructure"))
 
@@ -1024,7 +1149,7 @@ class MainWindow(QtGui.QMainWindow):
         self.status_field = QtGui.QLabel(Form)
         self.status_field.setObjectName(_fromUtf8("status_field"))
         self.status_date_field = QtGui.QLabel(Form)
-        self.status_date_field.setObjectName(_fromUtf8("status_date_field"))
+        self.status_date_field.setObjectName(_fromUtf8("status_date_field"))'''
 
         # update_TargetCV_value(self, varValue):
 
@@ -1038,6 +1163,7 @@ class MainWindow(QtGui.QMainWindow):
         # self.pB_CreateSQLStructure.setGeometry(QtCore.QRect(25, 110, 250, 23))
         # self.pB_CreateSQLStructure.clicked.connect(self.CreateSQLStructure)
 
+       '''
         try:
             self.pB_CreatePySQLStructure.setText(_translate("Form", "Create PySQL Structure", None))
             self.pB_CreatePySQLStructure.setGeometry(QtCore.QRect(25, 110, 200, 23))
@@ -1075,11 +1201,13 @@ class MainWindow(QtGui.QMainWindow):
         except:
             pass
 
-        self.pB_test2.setText(_translate("Form", "pB_test2", None))
-        self.pB_test2.setGeometry(QtCore.QRect(25, 700, 250, 23))
-        self.pB_test2.clicked.connect(self.pb_test2)
+
 
         try:
+            self.pB_test2.setText(_translate("Form", "pB_test2", None))
+            self.pB_test2.setGeometry(QtCore.QRect(25, 700, 250, 23))
+            self.pB_test2.clicked.connect(self.checkinifile)
+
             self.pB_report.setText(_translate("Form", "Report", None))
             self.pB_report.setGeometry(QtCore.QRect(25, 290, 200, 23))
             self.pB_report.clicked.connect(self.report)
@@ -1093,15 +1221,19 @@ class MainWindow(QtGui.QMainWindow):
         except:
             pass
 
-        self.pB_plot_CV_after_wash.setText(_translate("Form", "CV after wash", None))
-        self.pB_plot_CV_after_wash.setGeometry(QtCore.QRect(180, 640, 150, 23))
-        self.pB_plot_CV_after_wash.clicked.connect(self.plot_CV_after_wash)
 
-        self.pB_plot_tons_washed.setText(_translate("Form", "TON washed", None))
-        self.pB_plot_tons_washed.setGeometry(QtCore.QRect(180, 670, 150, 23))
-        self.pB_plot_tons_washed.clicked.connect(self.plot_tons_washed)
 
         try:
+
+            self.pB_plot_CV_after_wash.setText(_translate("Form", "CV after wash", None))
+            self.pB_plot_CV_after_wash.setGeometry(QtCore.QRect(180, 640, 150, 23))
+            self.pB_plot_CV_after_wash.clicked.connect(self.plot_CV_after_wash)
+
+            self.pB_plot_tons_washed.setText(_translate("Form", "TON washed", None))
+            self.pB_plot_tons_washed.setGeometry(QtCore.QRect(180, 670, 150, 23))
+            self.pB_plot_tons_washed.clicked.connect(self.plot_tons_washed)
+
+
             # self.statusField.setGeometry(QtCore.QRect(25, 600, 250, 23))
             # self.statusField.setText(_translate("Form", "status", None))
             # self.statusField.setVisible(False)
@@ -1231,6 +1363,9 @@ class MainWindow(QtGui.QMainWindow):
         self.status_date_field.setGeometry(QtCore.QRect(250, 35, 100, 23))
         self.status_date_field.setText(_translate("Form", "", None))
         # self.status_date_field.setVisible(False)
+        :param Form:
+        :return:
+        '''
 
 
         # self.status_field.setText(_translate("Form", "", None))
